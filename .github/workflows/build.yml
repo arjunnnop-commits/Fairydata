@@ -1,0 +1,46 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          ZIP=$(ls *.zip | head -n1)
+          echo "Using $ZIP"
+          mkdir project
+          unzip -q "$ZIP" -d project
+          # if the zip contains a single top-level folder, step into it
+          if [ ! -f project/settings.gradle.kts ]; then
+            INNER=$(dirname "$(find project -maxdepth 3 -name settings.gradle.kts | head -n1)")
+            mv "$INNER"/* "$INNER"/.[!.]* project/ 2>/dev/null || true
+          fi
+          ls -la project
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+
+      - name: Build APK
+        working-directory: project
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Show SHA-1 (for Google Cloud OAuth client)
+        working-directory: project
+        run: keytool -list -v -keystore app/vault.keystore -storepass fixvault123 | grep -E "SHA1|SHA-1"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FairyData-apk
+          path: project/app/build/outputs/apk/debug/*.apk
